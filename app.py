@@ -1109,5 +1109,72 @@ else:
             mime="text/csv",
         )
 
+
+# ============================================================
+# BONUS: Container Analysis Feature
+# ============================================================
+st.divider()
+
+with st.expander("📦 **Analiză Cost-Beneficiu Container** — Merită container mai mare?", expanded=False):
+    st.markdown("""
+Calculează dacă upgradul la container mai mare decurează:
+- **Cost săptămânal/lunar** pentru deplasări la aprovizionare
+- **Discount compărături** en-gros
+- **Creștere coș mediu** datorită mai multor produse
+""")
+    
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.markdown("#### Scenariu A — Container Curent")
+        suprafata_a = st.number_input("Suprafață (m²)", min_value=5, max_value=100, value=20, step=1, key='sup_a')
+        deplasari_a = st.number_input("Deplasări/lună", min_value=1, max_value=30, value=12, step=1, key='depl_a')
+        ore_per = st.number_input("Ore/deplasare", min_value=0.5, max_value=10.0, value=3.0, step=0.5, key='ore')
+        cost_ora_default = net_salariu_ron / (_zile * 8) if _zile > 0 else 0
+        cost_ora = st.number_input(f"Cost/oră (default: {cost_ora_default:.0f} RON)", min_value=0.0, value=cost_ora_default, step=10.0, key='costura')
+    
+    with col_b:
+        st.markdown("#### Scenariu B — Container Nou (Mai Mare)")
+        suprafata_b = st.number_input("Suprafață nouă (m²)", min_value=5, max_value=100, value=40, step=1, key='sup_b')
+        deplasari_b = st.number_input("Deplasări/lună (en-gros)", min_value=1, max_value=30, value=4, step=1, key='depl_b')
+        chirie_noua = st.number_input("Chirie nouă (RON/lună)", min_value=0.0, value=chirie_container_ron * 1.5, step=100.0, key='chir_n', format="%.0f")
+        discount = st.number_input("Discount marfă (%)", min_value=0.0, max_value=30.0, value=5.0, step=0.5, key='disc')
+        cos_inc = st.number_input("Creștere coș (%)", min_value=0.0, max_value=50.0, value=10.0, step=1.0, key='cos_inc')
+    
+    # Calculations
+    cost_timp_a = ore_per * deplasari_a * cost_ora
+    cost_timp_b = ore_per * deplasari_b * cost_ora
+    
+    marja_b = _margin + (discount / 100) * (1 - _margin / 100) * 100
+    
+    # Scenarios
+    params_a = {**params_ron, 'chirie_container': chirie_container_ron}
+    params_a['chirie_teren'] += cost_timp_a
+    
+    params_b = {**params_ron, 'chirie_container': chirie_noua}
+    params_b['chirie_teren'] += cost_timp_b
+    
+    costs_a = calculateTotalCosts(params_a)
+    costs_b = calculateTotalCosts(params_b)
+    
+    rev_a = calculateRevenueNeeded(costs_a['total'], _margin)
+    rev_b = calculateRevenueNeeded(costs_b['total'], marja_b)
+    
+    # Display comparison
+    st.markdown("---")
+    col_res1, col_res2 = st.columns(2)
+    with col_res1:
+        st.metric("Venituri necesare A", f"{sym} {from_ron(rev_a):,.0f}/lună")
+    with col_res2:
+        st.metric("Venituri necesare B", f"{sym} {from_ron(rev_b):,.0f}/lună")
+    
+    delta = rev_a - rev_b
+    if abs(delta) < rev_a * 0.05:
+        st.info("🟡 Indiferent — diferența < 5%")
+    elif delta > 0:
+        st.success(f"🟢 Container nou e mai eficient — {sym} {from_ron(delta):,.0f}/lună mai puțin necesar")
+    else:
+        st.warning(f"🔴 Container curent e mai bun — {sym} {from_ron(abs(delta)):,.0f}/lună mai mult cu container nou")
+
 st.divider()
 st.caption("Calculator Afacere v1.0 | România 2026 | Fiscal rules: SRL standard, CASS plafoane iulie 2026")

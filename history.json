@@ -1,0 +1,68 @@
+[
+  {
+    "timestamp": "08.04.2026 00:37:19",
+    "name": "v2",
+    "moneda": "RON",
+    "curs": 5.1,
+    "widget_values": {
+      "moneda": "RON",
+      "curs": 5.1,
+      "net_salariu": 6500.0,
+      "net_dividende": 0.0,
+      "nr_angajati": 1,
+      "salariu_angajat_1": 4325.0,
+      "chirie_teren": 4000.0,
+      "chirie_container": 3000.0,
+      "contabilitate": 500.0,
+      "utilitati": 1000.0,
+      "combustibil": 400.0,
+      "leasing": 1500.0,
+      "alte_costuri": 500.0,
+      "margin_procent": 25,
+      "include_cass": true,
+      "zile_lucratoare": 22,
+      "valoare_cos": 20.0,
+      "pret_apa": 3.59,
+      "pret_suc": 6.19,
+      "pret_dulciuri": 5.49,
+      "pret_tigari": 30.0,
+      "mix_apa": 35.0,
+      "mix_suc": 25.0,
+      "mix_dulciuri": 30.0,
+      "mix_tigari": 10.0,
+      "salariu_angajat_2": 4325.0,
+      "salariu_angajat_3": 4325.0,
+      "salariu_angajat_4": 4325.0,
+      "salariu_angajat_5": 4325.0,
+      "salariu_angajat_6": 4325.0,
+      "salariu_angajat_7": 4325.0,
+      "salariu_angajat_8": 4325.0,
+      "salariu_angajat_9": 4325.0,
+      "salariu_angajat_10": 4325.0
+    },
+    "params": {
+      "net_salariu": 6500.0,
+      "net_dividende": 0.0,
+      "nr_angajati": 1,
+      "salarii_angajati": [
+        4325.0
+      ],
+      "chirie_teren": 4000.0,
+      "chirie_container": 3000.0,
+      "contabilitate": 500.0,
+      "utilitati": 1000.0,
+      "combustibil": 400.0,
+      "leasing": 1500.0,
+      "alte_costuri": 500.0,
+      "include_cass": true
+    },
+    "results": {
+      "revenue_lunar_ron": 106733.69444444444,
+      "revenue_zilnic_ron": 4851.531565656565,
+      "clienti_zi": 242.57657828282828,
+      "produse_zi": 950.215637805684,
+      "total_costuri": 26683.42361111111,
+      "margin_procent": 25.0
+    }
+  }
+]

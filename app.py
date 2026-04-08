@@ -43,6 +43,7 @@ TRANSLATIONS = {
         'owner_section': '👤 Owner',
         'net_salary': 'Salariu net dorit (RON/lună)',
         'net_dividends': 'Dividende nete dorite (RON/lună)',
+        'total_in_mana': 'Total în mână (lunar)',
         'employees_section': '👥 Angajați',
         'num_employees': 'Număr angajați (fără owner)',
         'use_min_wage': 'Salariu minim',
@@ -143,6 +144,7 @@ TRANSLATIONS = {
         'owner_section': '👤 Owner',
         'net_salary': 'Desired net salary (RON/month)',
         'net_dividends': 'Desired net dividends (RON/month)',
+        'total_in_mana': 'Total in hand (monthly)',
         'employees_section': '👥 Employees',
         'num_employees': 'Number of employees (excl. owner)',
         'use_min_wage': 'Minimum wage',
@@ -422,18 +424,18 @@ st.markdown("""
 # Note: 'moneda', 'curs', 'include_cass', 'limba' are widget-bound — not included here
 input_defaults = {
     'net_salariu': 6500.0,
-    'net_dividende': 4000.0,
+    'net_dividende': 0.0,
     'nr_angajati': 1,
     'salariu_angajat_1': float(CONFIG['SALARIU_MINIM_BRUT']),
-    'chirie_teren': 2000.0,
-    'chirie_container': 1500.0,
+    'chirie_teren': 4000.0,
+    'chirie_container': 3000.0,
     'contabilitate': 500.0,
-    'utilitati': 700.0,
-    'combustibil': 800.0,
+    'utilitati': 1000.0,
+    'combustibil': 400.0,
     'leasing': 1500.0,
-    'alte_costuri': 1000.0,
+    'alte_costuri': 500.0,
     'margin_procent': 25,
-    'zile_lucratoare': 30,
+    'zile_lucratoare': 22,
     'valoare_cos': 12.0,
     'pret_apa': 3.59,
     'pret_suc': 6.19,
@@ -525,6 +527,8 @@ if st.session_state['_reset_pending']:
     st.session_state['_prev_moneda'] = 'RON'
     st.session_state.moneda = 'RON'
     st.session_state['_reset_pending'] = False
+    # No st.rerun() here — reset block runs before all widgets, so the script
+    # continues and every widget renders immediately with the new session_state values.
 
 # ============================================================
 # STEP 6: Load version BEFORE any widgets
@@ -643,6 +647,13 @@ with col_left:
             step=100.0,
             format="%.2f",
             key='net_dividende'
+        )
+        # Display total in mana (in hand)
+        total_in_mana_disp = net_salariu_disp + net_dividende_disp
+        st.divider()
+        st.metric(
+            label=t['total_in_mana'],
+            value=f"{sym} {total_in_mana_disp:,.2f}"
         )
 
     # --- B. Angajați ---
@@ -842,8 +853,18 @@ if _zile <= 0:
 # ============================================================
 st.subheader(t['results_title'])
 
-# Summary metric cards
-c1, c2, c3, c4 = st.columns(4)
+# Calculate total in mana
+total_in_mana_ron = net_salariu_ron + net_dividende_ron
+
+# Summary metric cards (with total in mana as first/primary)
+c0, c1, c2, c3, c4 = st.columns(5)
+with c0:
+    st.markdown(f"""
+    <div class="metric-card" style="border: 3px solid #1f77b4; background-color: #f0f8ff;">
+        <div class="metric-label" style="color: #1f77b4; font-weight: bold;">{t['total_in_mana']}</div>
+        <div class="metric-value" style="color: #1f77b4; font-size: 1.4em;">{sym} {from_ron(total_in_mana_ron):,.0f}</div>
+    </div>
+    """, unsafe_allow_html=True)
 with c1:
     st.markdown(f"""
     <div class="metric-card">

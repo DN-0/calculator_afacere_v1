@@ -122,6 +122,13 @@ TRANSLATIONS = {
         'profit_remaining': 'Profit rămas',
         'net_in_hand': 'Net în mână',
         'fixed_costs_comparison': '📊 Tabel Costuri Fixe Comparative',
+        'period_title': '📅 Calcul Total pentru O Perioadă',
+        'period_type': 'Tip perioadă',
+        'period_months': 'Luni',
+        'period_years': 'Ani',
+        'period_value': 'Număr',
+        'total_earned': 'Total câstigat',
+        'period_summary': 'Rezumat Perioadă',
     },
     'EN': {
         'title': 'Business Profit Calculator — Kiosk/Container 2026',
@@ -215,6 +222,13 @@ TRANSLATIONS = {
         'profit_remaining': 'Profit remaining',
         'net_in_hand': 'Net in hand',
         'fixed_costs_comparison': '📊 Fixed Costs Comparison Table',
+        'period_title': '📅 Calculate Total for a Period',
+        'period_type': 'Period type',
+        'period_months': 'Months',
+        'period_years': 'Years',
+        'period_value': 'Number',
+        'total_earned': 'Total earned',
+        'period_summary': 'Period Summary',
     }
 }
 
@@ -405,9 +419,8 @@ st.markdown("""
 # ============================================================
 # STEP 5: Input defaults + session_state init
 # ============================================================
+# Note: 'moneda', 'curs', 'include_cass', 'limba' are widget-bound — not included here
 input_defaults = {
-    'moneda': 'RON',
-    'curs': CONFIG['CURS_EUR_RON_DEFAULT'],
     'net_salariu': 6500.0,
     'net_dividende': 4000.0,
     'nr_angajati': 1,
@@ -420,7 +433,6 @@ input_defaults = {
     'leasing': 1500.0,
     'alte_costuri': 1000.0,
     'margin_procent': 25,
-    'include_cass': True,
     'zile_lucratoare': 30,
     'valoare_cos': 12.0,
     'pret_apa': 3.59,
@@ -437,6 +449,43 @@ input_defaults = {
 for i in range(2, 11):
     input_defaults[f'salariu_angajat_{i}'] = float(CONFIG['SALARIU_MINIM_BRUT'])
 
+# Define monetary keys early — needed for conversion BEFORE widget init loop
+_MONETARY_KEYS = [
+    'net_salariu', 'net_dividende', 'valoare_cos',
+    'chirie_teren', 'chirie_container', 'contabilitate',
+    'utilitati', 'combustibil', 'leasing', 'alte_costuri',
+    'pret_apa', 'pret_suc', 'pret_dulciuri', 'pret_tigari',
+] + [f'salariu_angajat_{i}' for i in range(1, 11)]
+
+if 'curs' not in st.session_state:
+    st.session_state.curs = CONFIG['CURS_EUR_RON_DEFAULT']
+
+if 'moneda' not in st.session_state:
+    st.session_state['moneda'] = 'RON'
+
+if '_prev_moneda' not in st.session_state:
+    st.session_state['_prev_moneda'] = st.session_state.get('moneda', 'RON')
+
+# Perform currency conversion HERE — before the widget init loop and WITHOUT
+# st.rerun(). Using st.rerun() from STEP 7b (after sidebar, before main widgets)
+# causes Streamlit to clean up session_state keys for unrendered widget-bound
+# keys (e.g. 'zile_lucratoare'), resetting them to defaults on the next run.
+_curr_moneda = st.session_state.get('moneda', 'RON')
+_prev_moneda_chk = st.session_state.get('_prev_moneda', _curr_moneda)
+if _prev_moneda_chk != _curr_moneda:
+    _rate = st.session_state.curs
+    if _curr_moneda == 'EUR':  # RON → EUR: divide
+        for _k in _MONETARY_KEYS:
+            if _k in st.session_state:
+                st.session_state[_k] = round(st.session_state[_k] / _rate, 4)
+    else:  # EUR → RON: multiply
+        for _k in _MONETARY_KEYS:
+            if _k in st.session_state:
+                st.session_state[_k] = round(st.session_state[_k] * _rate, 4)
+    st.session_state['_prev_moneda'] = _curr_moneda
+st.session_state['_prev_moneda'] = _curr_moneda
+
+# Initialize input fields; monetary keys already have converted values if applicable
 for key, val in input_defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
@@ -452,6 +501,30 @@ if 'limba' not in st.session_state:
 
 if 'version_saved_msg' not in st.session_state:
     st.session_state.version_saved_msg = False
+
+if 'period_type' not in st.session_state:
+    st.session_state.period_type = 'months'
+
+if 'period_value' not in st.session_state:
+    st.session_state.period_value = 12
+
+if '_reset_pending' not in st.session_state:
+    st.session_state['_reset_pending'] = False
+
+# Process pending reset BEFORE any widgets are instantiated
+if st.session_state['_reset_pending']:
+    # Reset all input fields to defaults
+    for key, val in input_defaults.items():
+        st.session_state[key] = val
+    # Also reset employee salaries
+    for i in range(1, 11):
+        key = f'salariu_angajat_{i}'
+        if key in input_defaults:
+            st.session_state[key] = input_defaults[key]
+    st.session_state.curs = CONFIG['CURS_EUR_RON_DEFAULT']
+    st.session_state['_prev_moneda'] = 'RON'
+    st.session_state.moneda = 'RON'
+    st.session_state['_reset_pending'] = False
 
 # ============================================================
 # STEP 6: Load version BEFORE any widgets
@@ -471,6 +544,8 @@ def load_version_into_state(version_data):
         for key in input_defaults:
             if key in version_data.get('params', {}):
                 st.session_state[key] = version_data['params'][key]
+    # Sync _prev_moneda so currency detection doesn't fire a spurious conversion
+    st.session_state['_prev_moneda'] = st.session_state.moneda
 
 
 if st.session_state.version_to_load is not None:
@@ -493,19 +568,21 @@ with st.sidebar:
     st.divider()
 
     moneda = st.radio(t['currency'], ["RON", "EUR"], horizontal=True, key='moneda')
-    sym = "RON" if moneda == "RON" else "€"
+    sym = "RON" if st.session_state.moneda == "RON" else "€"
 
     if moneda == "EUR":
-        curs = st.number_input(
+        curs_input = st.number_input(
             t['eur_rate'],
             min_value=1.0,
             max_value=20.0,
             step=0.01,
             format="%.2f",
+            value=st.session_state.curs,
             key='curs'
         )
     else:
-        curs = CONFIG['CURS_EUR_RON_DEFAULT']
+        # Do NOT overwrite curs here — preserve it for correct round-trip conversion
+        st.caption(f"{t['eur_rate']}: 1 EUR = {st.session_state.curs:.2f} RON")
 
     st.divider()
 
@@ -514,11 +591,7 @@ with st.sidebar:
     st.divider()
 
     if st.button(t['reset_btn'], width='stretch'):
-        # Skip widget-bound keys from sidebar (widgets manage their own state via key parameter)
-        widget_keys = {'moneda', 'curs', 'include_cass', 'limba'}
-        for key, val in input_defaults.items():
-            if key not in widget_keys:
-                st.session_state[key] = val
+        st.session_state['_reset_pending'] = True
         st.rerun()
 
     if st.button(t['load_example_btn'], width='stretch'):
@@ -527,19 +600,22 @@ with st.sidebar:
             'moneda': 'RON',
             'curs': CONFIG['CURS_EUR_RON_DEFAULT'],
         }
+        st.session_state['_prev_moneda'] = 'RON'
         st.rerun()
 
+# Currency conversion is now handled in STEP 5, before widget init.
+# _prev_moneda is already synchronized there — nothing to do here.
+
 # ============================================================
-# HELPER: conversion functions (defined after sidebar so
-# moneda and curs variables are available)
+# HELPER: conversion functions
 # ============================================================
 
 def to_ron(val):
-    return val * curs if moneda == "EUR" else val
+    return val * st.session_state.curs if st.session_state.moneda == "EUR" else val
 
 
 def from_ron(val):
-    return val / curs if moneda == "EUR" else val
+    return val / st.session_state.curs if st.session_state.moneda == "EUR" else val
 
 # ============================================================
 # STEP 8: Main content — Input widgets
@@ -552,7 +628,7 @@ col_left, col_right = st.columns([1, 1], gap="large")
 with col_left:
     # --- A. Owner ---
     with st.expander(t['owner_section'], expanded=True):
-        net_sal_label = f"{t['net_salary']} ({sym}/lună)" if moneda == "RON" else f"{t['net_salary']} ({sym}/month)"
+        net_sal_label = f"{t['net_salary']} ({sym}/lună)" if st.session_state.moneda == "RON" else f"{t['net_salary']} ({sym}/month)"
         net_salariu_disp = st.number_input(
             net_sal_label,
             min_value=0.0,
@@ -560,7 +636,7 @@ with col_left:
             format="%.2f",
             key='net_salariu'
         )
-        net_div_label = f"{t['net_dividends']} ({sym}/lună)" if moneda == "RON" else f"{t['net_dividends']} ({sym}/month)"
+        net_div_label = f"{t['net_dividends']} ({sym}/lună)" if st.session_state.moneda == "RON" else f"{t['net_dividends']} ({sym}/month)"
         net_dividende_disp = st.number_input(
             net_div_label,
             min_value=0.0,
@@ -582,22 +658,23 @@ with col_left:
         salarii_angajati_disp = []
         for i in range(1, int(nr_angajati) + 1):
             wage_key = f'salariu_angajat_{i}'
+            _min_wage_disp = from_ron(CONFIG['SALARIU_MINIM_BRUT'])
             if wage_key not in st.session_state:
-                st.session_state[wage_key] = float(CONFIG['SALARIU_MINIM_BRUT'])
+                st.session_state[wage_key] = _min_wage_disp
 
             use_min = st.checkbox(
                 f"{t['use_min_wage']} — Angajat {i}",
-                value=(st.session_state[wage_key] == float(CONFIG['SALARIU_MINIM_BRUT'])),
+                value=(abs(st.session_state[wage_key] - _min_wage_disp) < 1.0),
                 key=f'use_min_{i}'
             )
             if use_min:
-                st.session_state[wage_key] = float(CONFIG['SALARIU_MINIM_BRUT'])
-                st.caption(f"Angajat {i}: {sym} {from_ron(CONFIG['SALARIU_MINIM_BRUT']):.2f} brut")
-                salarii_angajati_disp.append(float(CONFIG['SALARIU_MINIM_BRUT']))
+                st.session_state[wage_key] = _min_wage_disp
+                st.caption(f"Angajat {i}: {sym} {_min_wage_disp:.2f} brut")
+                salarii_angajati_disp.append(to_ron(_min_wage_disp))
             else:
                 sal = st.number_input(
                     f"{t['employee_gross']} {i} ({sym})",
-                    min_value=float(CONFIG['SALARIU_MINIM_BRUT']),
+                    min_value=_min_wage_disp,
                     step=100.0,
                     format="%.2f",
                     key=wage_key
@@ -712,7 +789,7 @@ params_ron = {
     'combustibil': combustibil_ron,
     'leasing': leasing_ron,
     'alte_costuri': alte_costuri_ron,
-    'include_cass': bool(st.session_state.get('include_cass', input_defaults['include_cass'])),
+    'include_cass': bool(st.session_state.get('include_cass', True)),
 }
 
 _margin = float(st.session_state.get('margin_procent', input_defaults['margin_procent']))
@@ -797,6 +874,76 @@ with c4:
     """, unsafe_allow_html=True)
 
 st.write("")
+
+# ============================================================
+# Period calculation section
+# ============================================================
+with st.expander(t['period_title'], expanded=False):
+    period_col1, period_col2 = st.columns([2, 2])
+    
+    with period_col1:
+        period_type = st.radio(
+            t['period_type'],
+            options=['months', 'years'],
+            format_func=lambda x: t['period_months'] if x == 'months' else t['period_years'],
+            horizontal=True,
+            key='period_type'
+        )
+    
+    with period_col2:
+        max_val = 60 if period_type == 'months' else 5
+        period_value = st.number_input(
+            t['period_value'],
+            min_value=1,
+            max_value=max_val,
+            step=1,
+            key='period_value'
+        )
+    
+    # Calculate total months
+    total_months = period_value if period_type == 'months' else period_value * 12
+    
+    # Calculate net income for the period (what you keep in hand)
+    total_net_salary_period = net_salariu_ron * total_months
+    total_net_dividends_period = net_dividende_ron * total_months
+    total_net_in_hand = total_net_salary_period + total_net_dividends_period
+    
+    # Display period summary
+    st.divider()
+    per_c1, per_c2, per_c3 = st.columns(3)
+    
+    with per_c1:
+        st.metric(
+            f"👤 {('Salariu net' if limba == 'RO' else 'Net Salary')}",
+            f"{sym} {from_ron(total_net_salary_period):,.0f}",
+            f"{total_months} {'luni' if limba == 'RO' else 'months'}"
+        )
+    
+    with per_c2:
+        st.metric(
+            f"💰 {('Dividende net' if limba == 'RO' else 'Net Dividends')}",
+            f"{sym} {from_ron(total_net_dividends_period):,.0f}",
+            f"{total_months} {'luni' if limba == 'RO' else 'months'}"
+        )
+    
+    with per_c3:
+        st.metric(
+            f"✅ {('Total în mână' if limba == 'RO' else 'Total in Hand')}",
+            f"{sym} {from_ron(total_net_in_hand):,.0f}",
+        )
+    
+    # Detailed breakdown table for the period
+    st.subheader(t['period_summary'])
+    period_data = {
+        ('Salariu net/lună' if limba == 'RO' else 'Net salary/month'): f"{sym} {from_ron(net_salariu_ron):,.0f}",
+        ('Dividende net/lună' if limba == 'RO' else 'Net dividends/month'): f"{sym} {from_ron(net_dividende_ron):,.0f}",
+        ('Perioada (luni)' if limba == 'RO' else 'Period (months)'): f"{total_months}",
+        ('Salariu total' if limba == 'RO' else 'Total salary'): f"{sym} {from_ron(total_net_salary_period):,.0f}",
+        ('Dividende total' if limba == 'RO' else 'Total dividends'): f"{sym} {from_ron(total_net_dividends_period):,.0f}",
+        ('Total în mână' if limba == 'RO' else 'Total in hand'): f"**{sym} {from_ron(total_net_in_hand):,.0f}**",
+    }
+    period_df = pd.DataFrame(list(period_data.items()), columns=['Parametru' if limba == 'RO' else 'Parameter', 'Valoare' if limba == 'RO' else 'Value'])
+    st.dataframe(period_df, hide_index=True, width='stretch')
 
 # Breakdown columns
 bd_col1, bd_col2 = st.columns(2)
@@ -983,16 +1130,16 @@ with st.expander(t['fixed_costs_comparison'], expanded=False):
 
 # Download current report CSV
 current_report_rows = [
-    ('Venituri lunare necesare (RON)', f"{revenue_lunar_ron:,.2f}"),
-    ('Venituri zilnice (RON)', f"{revenue_zilnic_ron:,.2f}"),
+    (f'Venituri lunare necesare ({sym})', f"{from_ron(revenue_lunar_ron):,.2f}"),
+    (f'Venituri zilnice ({sym})', f"{from_ron(revenue_zilnic_ron):,.2f}"),
     ('Clienți/zi', f"{clienti_zi:.1f}"),
     ('Produse/zi', f"{produse_zi:.1f}"),
-    ('Total costuri (RON)', f"{costs['total']:,.2f}"),
+    (f'Total costuri ({sym})', f"{from_ron(costs['total']):,.2f}"),
     ('Marja (%)', f"{_margin:.1f}"),
-    ('Cost owner (RON)', f"{costs['cost_owner']:,.2f}"),
-    ('Cost angajați total (RON)', f"{costs['cost_angajati']:,.2f}"),
-    ('Costuri fixe total (RON)', f"{costs['costuri_fixe']:,.2f}"),
-    ('Profit pre-tax dividende (RON)', f"{costs['profit_necesar_dividende']:,.2f}"),
+    (f'Cost owner ({sym})', f"{from_ron(costs['cost_owner']):,.2f}"),
+    (f'Cost angajați total ({sym})', f"{from_ron(costs['cost_angajati']):,.2f}"),
+    (f'Costuri fixe total ({sym})', f"{from_ron(costs['costuri_fixe']):,.2f}"),
+    (f'Profit pre-tax dividende ({sym})', f"{from_ron(costs['profit_necesar_dividende']):,.2f}"),
 ]
 csv_current = "Element,Valoare\n" + "\n".join(f'"{r[0]}","{r[1]}"' for r in current_report_rows)
 st.download_button(
@@ -1027,7 +1174,7 @@ with sv_col2:
             'timestamp': datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
             'name': version_name or f"Versiune {len(st.session_state.history) + 1}",
             'moneda': moneda,
-            'curs': curs,
+            'curs': st.session_state.curs,
             'widget_values': widget_values,
             'params': params_ron,
             'results': results_dict,
@@ -1062,8 +1209,8 @@ else:
                 ver_rows = [
                     ('Versiune', ver['name']),
                     ('Data', ver['timestamp']),
-                    ('Venituri lunare necesare (RON)', f"{ver.get('results', {}).get('revenue_lunar_ron', 0):,.2f}"),
-                    ('Total costuri (RON)', f"{ver.get('results', {}).get('total_costuri', 0):,.2f}"),
+                    (f'Venituri lunare necesare ({sym})', f"{from_ron(ver.get('results', {}).get('revenue_lunar_ron', 0)):,.2f}"),
+                    (f'Total costuri ({sym})', f"{from_ron(ver.get('results', {}).get('total_costuri', 0)):,.2f}"),
                     ('Marja (%)', f"{ver.get('results', {}).get('margin_procent', 0):.1f}"),
                 ]
                 ver_params = ver.get('params', {})
@@ -1131,19 +1278,20 @@ Calculează dacă upgradul la container mai mare decurează:
         deplasari_a = st.number_input("Deplasări/lună", min_value=1, max_value=30, value=12, step=1, key='depl_a')
         ore_per = st.number_input("Ore/deplasare", min_value=0.5, max_value=10.0, value=3.0, step=0.5, key='ore')
         cost_ora_default = net_salariu_ron / (_zile * 8) if _zile > 0 else 0
-        cost_ora = st.number_input(f"Cost/oră (default: {cost_ora_default:.0f} RON)", min_value=0.0, value=cost_ora_default, step=10.0, key='costura')
+        cost_ora = st.number_input(f"Cost/oră (default: {from_ron(cost_ora_default):.0f} {sym})", min_value=0.0, value=from_ron(cost_ora_default), step=10.0, key='costura')
     
     with col_b:
         st.markdown("#### Scenariu B — Container Nou (Mai Mare)")
         suprafata_b = st.number_input("Suprafață nouă (m²)", min_value=5, max_value=100, value=40, step=1, key='sup_b')
         deplasari_b = st.number_input("Deplasări/lună (en-gros)", min_value=1, max_value=30, value=4, step=1, key='depl_b')
-        chirie_noua = st.number_input("Chirie nouă (RON/lună)", min_value=0.0, value=chirie_container_ron * 1.5, step=100.0, key='chir_n', format="%.0f")
+        chirie_noua = st.number_input(f"Chirie nouă ({sym}/lună)", min_value=0.0, value=from_ron(chirie_container_ron * 1.5), step=100.0, key='chir_n', format="%.0f")
         discount = st.number_input("Discount marfă (%)", min_value=0.0, max_value=30.0, value=5.0, step=0.5, key='disc')
         cos_inc = st.number_input("Creștere coș (%)", min_value=0.0, max_value=50.0, value=10.0, step=1.0, key='cos_inc')
     
-    # Calculations
-    cost_timp_a = ore_per * deplasari_a * cost_ora
-    cost_timp_b = ore_per * deplasari_b * cost_ora
+    # Calculations (convert back to RON for internal calculations)
+    cost_ora_ron = to_ron(cost_ora)
+    cost_timp_a = ore_per * deplasari_a * cost_ora_ron
+    cost_timp_b = ore_per * deplasari_b * cost_ora_ron
     
     marja_b = _margin + (discount / 100) * (1 - _margin / 100) * 100
     
@@ -1151,7 +1299,8 @@ Calculează dacă upgradul la container mai mare decurează:
     params_a = {**params_ron, 'chirie_container': chirie_container_ron}
     params_a['chirie_teren'] += cost_timp_a
     
-    params_b = {**params_ron, 'chirie_container': chirie_noua}
+    chirie_noua_ron = to_ron(chirie_noua)
+    params_b = {**params_ron, 'chirie_container': chirie_noua_ron}
     params_b['chirie_teren'] += cost_timp_b
     
     costs_a = calculateTotalCosts(params_a)

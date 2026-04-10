@@ -31,7 +31,7 @@ CONFIG = {
 # ============================================================
 TRANSLATIONS = {
     'RO': {
-        'title': 'Calculator Profit Afacere — Chioșc/Container 2026',
+        'title': 'Calculator Profit Afacere 2026',
         'subtitle': 'Planifică profitabilitatea | Romania 2026',
         'settings': 'Setări',
         'language': 'Limbă / Language',
@@ -107,7 +107,9 @@ TRANSLATIONS = {
         'dividends_cass': 'CASS dividende (lunar)',
         'dividends_gross': 'Dividende brute',
         'dividends_tax': 'Impozit dividende (16%)',
-        'pretax_profit': 'Profit pre-tax necesar',
+        'impozit_profit': 'Impozit profit firmă (16%)',
+        'pretax_profit': 'Profit pre-tax necesar firmei',
+        'deductibil': 'Deductibil',
         'margin_pct': 'Marja (%)',
         'annual': 'Anual',
         'cass_plafon': 'Plafon CASS',
@@ -123,6 +125,7 @@ TRANSLATIONS = {
         'profit_remaining': 'Profit rămas',
         'net_in_hand': 'Net în mână',
         'fixed_costs_comparison': '📊 Tabel Costuri Fixe Comparative',
+        'financial_statement_title': '📋 Situație Financiară Completă — Owner',
         'period_title': '📅 Calcul Total pentru O Perioadă',
         'period_type': 'Tip perioadă',
         'period_months': 'Luni',
@@ -132,7 +135,7 @@ TRANSLATIONS = {
         'period_summary': 'Rezumat Perioadă',
     },
     'EN': {
-        'title': 'Business Profit Calculator — Kiosk/Container 2026',
+        'title': 'Business Profit Calculator 2026',
         'subtitle': 'Plan profitability | Romania 2026',
         'settings': 'Settings',
         'language': 'Language / Limbă',
@@ -208,7 +211,9 @@ TRANSLATIONS = {
         'dividends_cass': 'Dividend CASS (monthly)',
         'dividends_gross': 'Gross dividends',
         'dividends_tax': 'Dividend tax (16%)',
-        'pretax_profit': 'Required pre-tax profit',
+        'impozit_profit': 'Corporate income tax (16%)',
+        'pretax_profit': 'Required pre-tax profit (company)',
+        'deductibil': 'Deductible',
         'margin_pct': 'Margin (%)',
         'annual': 'Annual',
         'cass_plafon': 'CASS ceiling',
@@ -224,6 +229,7 @@ TRANSLATIONS = {
         'profit_remaining': 'Profit remaining',
         'net_in_hand': 'Net in hand',
         'fixed_costs_comparison': '📊 Fixed Costs Comparison Table',
+        'financial_statement_title': '📋 Complete Financial Statement — Owner',
         'period_title': '📅 Calculate Total for a Period',
         'period_type': 'Period type',
         'period_months': 'Months',
@@ -276,13 +282,14 @@ def calculateEmployeeCost(gross_ron):
     return {'cas': cas, 'cass': cass, 'impozit': impozit, 'net': net, 'gross': gross_ron}
 
 
-def calculateDividendCASS(dividende_nete_anuale_ron, include_cass):
-    if not include_cass or dividende_nete_anuale_ron <= 0:
+def calculateDividendCASS(dividende_brute_anuale_ron, include_cass):
+    """Selectează plafonul CASS pe baza dividendelor BRUTE anuale (venitul realizat)."""
+    if not include_cass or dividende_brute_anuale_ron <= 0:
         return {'plafon': 0, 'cass_anual': 0, 'cass_lunar': 0}
 
-    if dividende_nete_anuale_ron <= CONFIG['CASS_PLAFON_6SAL']:
+    if dividende_brute_anuale_ron <= CONFIG['CASS_PLAFON_6SAL']:
         plafon = CONFIG['CASS_PLAFON_6SAL']
-    elif dividende_nete_anuale_ron <= CONFIG['CASS_PLAFON_12SAL']:
+    elif dividende_brute_anuale_ron <= CONFIG['CASS_PLAFON_12SAL']:
         plafon = CONFIG['CASS_PLAFON_12SAL']
     else:
         plafon = CONFIG['CASS_PLAFON_24SAL']
@@ -292,7 +299,14 @@ def calculateDividendCASS(dividende_nete_anuale_ron, include_cass):
 
 
 def calculateGrossDividendsNeeded(net_dividende_lunar_ron, include_cass):
-    cass_info = calculateDividendCASS(net_dividende_lunar_ron * 12, include_cass)
+    # Iterative: estimate gross, determine CASS threshold from gross, recalculate.
+    # First pass: estimate gross without CASS to get approximate brut for threshold selection
+    brut_estimat = net_dividende_lunar_ron / (1 - CONFIG['COTA_IMPOZIT_DIVIDENDE'])
+    cass_info = calculateDividendCASS(brut_estimat * 12, include_cass)
+    # Second pass: recalculate gross including the correct CASS
+    brut = (net_dividende_lunar_ron + cass_info['cass_lunar']) / (1 - CONFIG['COTA_IMPOZIT_DIVIDENDE'])
+    # Re-check threshold with final gross (may shift plafon)
+    cass_info = calculateDividendCASS(brut * 12, include_cass)
     brut = (net_dividende_lunar_ron + cass_info['cass_lunar']) / (1 - CONFIG['COTA_IMPOZIT_DIVIDENDE'])
     return {
         'brut_lunar': brut,
@@ -349,19 +363,23 @@ def calculateProductMix(revenue_zilnica, basket, mix_pct, preturi):
     return {'clienti_zi': clienti_zi, 'items': items}
 
 
-def calculateMarginSensitivity(total_costs_ron, zile_lucratoare, marje=None):
+def calculateMarginSensitivity(total_costs_ron, zile_lucratoare, current_margin, marje=None):
     if marje is None:
         marje = [20, 22, 25, 28, 30]
+    # Fix: use fixed revenue (from current margin) so "profit ramas" shows
+    # how much MORE or LESS profit each alternative margin would yield.
+    rev_fixed = calculateRevenueNeeded(total_costs_ron, current_margin)
     rows = []
     for m in marje:
-        rev_lunar = calculateRevenueNeeded(total_costs_ron, m)
-        rev_zilnic = rev_lunar / zile_lucratoare if zile_lucratoare > 0 else 0
-        profit_ramas = rev_lunar * (m / 100) - total_costs_ron
+        rev_breakeven = calculateRevenueNeeded(total_costs_ron, m)
+        rev_zilnic = rev_breakeven / zile_lucratoare if zile_lucratoare > 0 else 0
+        # Profit remaining if you hit the SAME revenue but at margin m
+        profit_ramas = rev_fixed * (m / 100) - total_costs_ron
         rows.append({
             'Marja (%)': m,
-            'Venituri lunare (RON)': round(rev_lunar, 0),
+            'Venituri lunare (RON)': round(rev_breakeven, 0),
             'Venituri zilnice (RON)': round(rev_zilnic, 0),
-            'Profit ramas (RON)': round(max(0, profit_ramas), 0),
+            'Profit ramas (RON)': round(profit_ramas, 0),
         })
     return rows
 
@@ -423,12 +441,12 @@ st.markdown("""
 # ============================================================
 # Note: 'moneda', 'curs', 'include_cass', 'limba' are widget-bound — not included here
 input_defaults = {
-    'net_salariu': 6500.0,
-    'net_dividende': 0.0,
+    'net_salariu': 0.0,
+    'net_dividende': 6500.0,
     'nr_angajati': 1,
     'salariu_angajat_1': float(CONFIG['SALARIU_MINIM_BRUT']),
     'chirie_teren': 4000.0,
-    'chirie_container': 3000.0,
+    'chirie_locatie': 3000.0,
     'contabilitate': 500.0,
     'utilitati': 1000.0,
     'combustibil': 400.0,
@@ -436,15 +454,15 @@ input_defaults = {
     'alte_costuri': 500.0,
     'margin_procent': 25,
     'zile_lucratoare': 22,
-    'valoare_cos': 12.0,
+    'valoare_cos': 20.0,
     'pret_apa': 3.59,
     'pret_suc': 6.19,
     'pret_dulciuri': 5.49,
-    'pret_tigari': 30.0,
+    'pret_tigari': 0.0,
     'mix_apa': 35.0,
-    'mix_suc': 25.0,
+    'mix_suc': 35.0,
     'mix_dulciuri': 30.0,
-    'mix_tigari': 10.0,
+    'mix_tigari': 0.0,
 }
 
 # Add per-employee defaults for up to 10 employees
@@ -897,6 +915,199 @@ with c4:
 st.write("")
 
 # ============================================================
+# Full Financial Statement (P&L waterfall for owner)
+# ============================================================
+with st.expander(t['financial_statement_title'], expanded=True):
+    _fs         = costs['div_info']
+    _pretax     = costs['profit_necesar_dividende']
+    _imp_profit = _pretax * CONFIG['COTA_IMPOZIT_PROFIT']
+    _div_brut   = _fs['brut_lunar']
+    _imp_div    = _fs['impozit_dividende']
+    _cass_div   = _fs['cass_lunar']
+    _cogs       = revenue_lunar_ron * (1.0 - _margin / 100.0)
+    _gross_p    = revenue_lunar_ron - _cogs
+    _cam_own    = costs['gross_owner'] * CONFIG['CAM_ANGAJATOR']
+
+    def _fv(ron): return f"{sym}&nbsp;{from_ron(abs(ron)):,.0f}"
+    def _fp(ron): return f"{ron / revenue_lunar_ron * 100:.1f}%" if revenue_lunar_ron > 0 else ""
+
+    _r = (limba == 'RO')
+
+    # Pre-compute all translated labels (avoids backslash in f-string expressions)
+    _L = {
+        'col_elem'  : 'Element'                               if _r else 'Item',
+        'col_luna'  : f"{sym}/lun\u0103"                      if _r else f"{sym}/month",
+        'col_pct'   : '%\u00a0Ven.'                           if _r else '%\u00a0Rev.',
+        'col_nota'  : 'Not\u0103'                             if _r else 'Note',
+        's_venit'   : '\U0001f4b0 VENITURI'                   if _r else '\U0001f4b0 REVENUE',
+        'rev_brut'  : 'Venituri lunare brute'                 if _r else 'Monthly gross revenue',
+        'cogs'      : '\u00a0\u00a0\u2212 Cost marf\u0103\u00a0/\u00a0achizi\u021bie (COGS)'
+                                                              if _r else '\u00a0\u00a0\u2212 Cost of goods (COGS)',
+        'cogs_nt'   : f"la marj\u0103 {_margin:.0f}%"        if _r else f"at margin {_margin:.0f}%",
+        'gp'        : '= Profit brut comercial'               if _r else '= Gross commercial profit',
+        's_ded'     : '\U0001f50d CHELTUIELI DEDUCTIBILE FIRM\u0102'
+                                                              if _r else '\U0001f50d DEDUCTIBLE BUSINESS EXPENSES',
+        'co_lbl'    : '\u00a0\u00a0\u2212 Cost angajator Owner'
+                                                              if _r else '\u00a0\u00a0\u2212 Owner employer cost',
+        'co_sub'    : f"(brut {_fv(costs['gross_owner'])} + CAM {_fv(_cam_own)})",
+        'co_nt'     : '\u2705 deductibil\u00a0100%'           if _r else '\u2705 100%\u00a0deductible',
+        'ca_lbl'    : '\u00a0\u00a0\u2212 Cost angajatori angaja\u021bi'
+                                                              if _r else '\u00a0\u00a0\u2212 Employee employer costs',
+        'ca_nt'     : '\u2705 deductibil\u00a0100%'           if _r else '\u2705 100%\u00a0deductible',
+        'cf_lbl'    : '\u00a0\u00a0\u2212 Costuri fixe totale' if _r else '\u00a0\u00a0\u2212 Total fixed costs',
+        'cf_nt'     : '\u2705 deductibil\u00a0~100%'          if _r else '\u2705 ~100%\u00a0deductible',
+        'pi'        : '= Profit impozabil'                    if _r else '= Taxable profit',
+        's_tax'     : '\U0001f3db IMPOZIT PE PROFIT (firm\u0103)'
+                                                              if _r else '\U0001f3db CORPORATE INCOME TAX',
+        'ip_lbl'    : '\u00a0\u00a0\u2212 Impozit pe profit (16%)'
+                                                              if _r else '\u00a0\u00a0\u2212 Corporate income tax (16%)',
+        'ip_nt'     : 'D100 trimestrial'                      if _r else 'D100 quarterly',
+        'db_lbl'    : '= Dividende brute (profit net firm\u0103)'
+                                                              if _r else '= Gross dividends (company net profit)',
+        'db_nt'     : 'distribuite c\u0103tre owner'          if _r else 'distributed to owner',
+        's_div'     : '\U0001f4b8 IMPOZITE PE DIVIDENDE (owner)'
+                                                              if _r else '\U0001f4b8 DIVIDEND TAXES (owner)',
+        'idiv_lbl'  : '\u00a0\u00a0\u2212 Impozit dividende (16%)'
+                                                              if _r else '\u00a0\u00a0\u2212 Dividend tax (16%)',
+        'cass_lbl'  : '\u00a0\u00a0\u2212 CASS dividende'    if _r else '\u00a0\u00a0\u2212 CASS on dividends',
+        'cass_nt'   : (f"plafon {sym}\u00a0{from_ron(_fs['cass_info']['plafon']):,.0f}/an"
+                       if _cass_div > 0 else '\u2014')        if _r
+                      else (f"ceiling {sym}\u00a0{from_ron(_fs['cass_info']['plafon']):,.0f}/yr"
+                            if _cass_div > 0 else '\u2014'),
+        'dn_lbl'    : '= Dividende nete \xeen m\xe2n\u0103'  if _r else '= Net dividends in hand',
+        's_sal'     : '\U0001f464 SALARIU OWNER \u2014 re\u021binute din brut'
+                                                              if _r else '\U0001f464 OWNER SALARY \u2014 withholdings',
+        'gb_lbl'    : '\u00a0\u00a0Salariu brut'             if _r else '\u00a0\u00a0Gross salary',
+        'gb_nt'     : 'baz\u0103 calcul'                     if _r else 'calculation base',
+        'cas_lbl'   : '\u00a0\u00a0\u00a0\u00a0\u2212 CAS angajat (25%)'
+                                                              if _r else '\u00a0\u00a0\u00a0\u00a0\u2212 Employee CAS (25%)',
+        'cas_nt'    : 're\u021binut din brut'                 if _r else 'withheld from gross',
+        'cass2_lbl' : '\u00a0\u00a0\u00a0\u00a0\u2212 CASS angajat (10%)'
+                                                              if _r else '\u00a0\u00a0\u00a0\u00a0\u2212 Employee CASS (10%)',
+        'iv_lbl'    : '\u00a0\u00a0\u00a0\u00a0\u2212 Impozit venit (10%)'
+                                                              if _r else '\u00a0\u00a0\u00a0\u00a0\u2212 Income tax (10%)',
+        'sn_lbl'    : '= Salariu net'                        if _r else '= Net salary',
+        'tot_lbl'   : '\u2705 TOTAL NET \xcen M\xc2N\u0102 / LUN\u0102'
+                                                              if _r else '\u2705 TOTAL NET IN HAND / MONTH',
+        'tot_nt'    : 'salariu net + dividende nete'         if _r else 'net salary + net dividends',
+    }
+
+    _row_angajati = ""
+    if costs['cost_angajati'] > 0:
+        _row_angajati = (
+            f"<tr>"
+            f"<td>{_L['ca_lbl']}</td>"
+            f"<td class='fst-val fst-neg'>&#8722;{_fv(costs['cost_angajati'])}</td>"
+            f"<td class='fst-pct'>{_fp(costs['cost_angajati'])}</td>"
+            f"<td class='fst-nt'>{_L['ca_nt']}</td>"
+            f"</tr>"
+        )
+
+    _css = """<style>
+.fst{width:100%;border-collapse:collapse;font-size:.88rem;}
+.fst td{padding:5px 10px;border-bottom:1px solid rgba(128,128,128,.12);vertical-align:middle;}
+.fst-sec td{background:#1e3a5f;color:#e8f4fd;font-weight:700;padding:7px 10px;letter-spacing:.04em;}
+.fst-sub td{background:#0d3b27;color:#52b788;font-weight:700;border-top:1.5px solid #52b788;padding:6px 10px;}
+.fst-tot td{background:#1a3d1a;color:#ffd700;font-weight:700;font-size:1rem;border-top:3px solid #ffd700;padding:8px 10px;}
+.fst-neg{color:#ff7b72;}
+.fst-pos{color:#56d364;}
+.fst-val{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.fst-pct{text-align:right;color:#8b949e;font-size:.8rem;white-space:nowrap;}
+.fst-nt{color:#8b949e;font-size:.8rem;}
+.fst th{background:#152a3e;color:#b7e4c7;text-align:right;padding:7px 10px;font-weight:600;}
+.fst th:first-child{text-align:left;}
+</style>"""
+
+    _thead = (
+        f"<table class='fst'><thead><tr>"
+        f"<th style='text-align:left;min-width:240px;'>{_L['col_elem']}</th>"
+        f"<th>{_L['col_luna']}</th>"
+        f"<th>{_L['col_pct']}</th>"
+        f"<th style='text-align:left;'>{_L['col_nota']}</th>"
+        f"</tr></thead><tbody>"
+    )
+
+    _rows = (
+        # ── REVENUE ─────────────────────────────────────────────────────
+        f"<tr class='fst-sec'><td colspan='4'>{_L['s_venit']}</td></tr>"
+        f"<tr><td>{_L['rev_brut']}</td>"
+        f"<td class='fst-val fst-pos'>+{_fv(revenue_lunar_ron)}</td>"
+        f"<td class='fst-pct'>100.0%</td><td class='fst-nt'>&mdash;</td></tr>"
+        f"<tr><td>{_L['cogs']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(_cogs)}</td>"
+        f"<td class='fst-pct'>{_fp(_cogs)}</td>"
+        f"<td class='fst-nt'>{_L['cogs_nt']}</td></tr>"
+        f"<tr class='fst-sub'><td>{_L['gp']}</td>"
+        f"<td class='fst-val'>{_fv(_gross_p)}</td>"
+        f"<td class='fst-pct'>{_fp(_gross_p)}</td><td></td></tr>"
+        # ── DEDUCTIBLE COSTS ────────────────────────────────────────────
+        f"<tr class='fst-sec'><td colspan='4'>{_L['s_ded']}</td></tr>"
+        f"<tr><td>{_L['co_lbl']}&nbsp;<span style='color:#8b949e;font-size:.8rem;'>{_L['co_sub']}</span></td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(costs['cost_owner'])}</td>"
+        f"<td class='fst-pct'>{_fp(costs['cost_owner'])}</td>"
+        f"<td class='fst-nt'>{_L['co_nt']}</td></tr>"
+        f"{_row_angajati}"
+        f"<tr><td>{_L['cf_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(costs['costuri_fixe'])}</td>"
+        f"<td class='fst-pct'>{_fp(costs['costuri_fixe'])}</td>"
+        f"<td class='fst-nt'>{_L['cf_nt']}</td></tr>"
+        f"<tr class='fst-sub'><td>{_L['pi']}</td>"
+        f"<td class='fst-val'>{_fv(_pretax)}</td>"
+        f"<td class='fst-pct'>{_fp(_pretax)}</td><td></td></tr>"
+        # ── CORPORATE TAX ───────────────────────────────────────────────
+        f"<tr class='fst-sec'><td colspan='4'>{_L['s_tax']}</td></tr>"
+        f"<tr><td>{_L['ip_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(_imp_profit)}</td>"
+        f"<td class='fst-pct'>{_fp(_imp_profit)}</td>"
+        f"<td class='fst-nt'>{_L['ip_nt']}</td></tr>"
+        f"<tr class='fst-sub'><td>{_L['db_lbl']}</td>"
+        f"<td class='fst-val'>{_fv(_div_brut)}</td>"
+        f"<td class='fst-pct'>{_fp(_div_brut)}</td>"
+        f"<td class='fst-nt'>{_L['db_nt']}</td></tr>"
+        # ── DIVIDEND TAXES ──────────────────────────────────────────────
+        f"<tr class='fst-sec'><td colspan='4'>{_L['s_div']}</td></tr>"
+        f"<tr><td>{_L['idiv_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(_imp_div)}</td>"
+        f"<td class='fst-pct'>{_fp(_imp_div)}</td><td></td></tr>"
+        f"<tr><td>{_L['cass_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(_cass_div)}</td>"
+        f"<td class='fst-pct'>{_fp(_cass_div)}</td>"
+        f"<td class='fst-nt'>{_L['cass_nt']}</td></tr>"
+        f"<tr class='fst-sub'><td>{_L['dn_lbl']}</td>"
+        f"<td class='fst-val'>{_fv(net_dividende_ron)}</td>"
+        f"<td class='fst-pct'>{_fp(net_dividende_ron)}</td><td></td></tr>"
+        # ── OWNER SALARY ────────────────────────────────────────────────
+        f"<tr class='fst-sec'><td colspan='4'>{_L['s_sal']}</td></tr>"
+        f"<tr><td>{_L['gb_lbl']}</td>"
+        f"<td class='fst-val'>{_fv(costs['gross_owner'])}</td>"
+        f"<td class='fst-pct'>{_fp(costs['gross_owner'])}</td>"
+        f"<td class='fst-nt'>{_L['gb_nt']}</td></tr>"
+        f"<tr><td>{_L['cas_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(owner_emp_cost['cas'])}</td>"
+        f"<td class='fst-pct'>{_fp(owner_emp_cost['cas'])}</td>"
+        f"<td class='fst-nt'>{_L['cas_nt']}</td></tr>"
+        f"<tr><td>{_L['cass2_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(owner_emp_cost['cass'])}</td>"
+        f"<td class='fst-pct'>{_fp(owner_emp_cost['cass'])}</td>"
+        f"<td class='fst-nt'>{_L['cas_nt']}</td></tr>"
+        f"<tr><td>{_L['iv_lbl']}</td>"
+        f"<td class='fst-val fst-neg'>&#8722;{_fv(owner_emp_cost['impozit'])}</td>"
+        f"<td class='fst-pct'>{_fp(owner_emp_cost['impozit'])}</td>"
+        f"<td class='fst-nt'>{_L['cas_nt']}</td></tr>"
+        f"<tr class='fst-sub'><td>{_L['sn_lbl']}</td>"
+        f"<td class='fst-val'>{_fv(net_salariu_ron)}</td>"
+        f"<td class='fst-pct'>{_fp(net_salariu_ron)}</td><td></td></tr>"
+        # ── TOTAL ────────────────────────────────────────────────────────
+        f"<tr class='fst-tot'><td>{_L['tot_lbl']}</td>"
+        f"<td class='fst-val'>{_fv(total_in_mana_ron)}</td>"
+        f"<td class='fst-pct'>{_fp(total_in_mana_ron)}</td>"
+        f"<td class='fst-nt'>{_L['tot_nt']}</td></tr>"
+    )
+
+    st.markdown(_css + _thead + _rows + "</tbody></table>", unsafe_allow_html=True)
+
+
+# ============================================================
 # Period calculation section
 # ============================================================
 with st.expander(t['period_title'], expanded=False):
@@ -995,23 +1206,30 @@ with bd_col1:
     with st.expander(t['breakdown_dividends'], expanded=True):
         div_info = costs['div_info']
         pretax = calculatePretaxProfitForDividends(div_info['brut_lunar'])
+        impozit_profit_ron = pretax - div_info['brut_lunar']
         data_div = {
             'Element': [
                 t['dividends_net'],
                 t['dividends_cass'],
-                t['dividends_gross'],
                 t['dividends_tax'],
+                t['dividends_gross'],
+                t['impozit_profit'],
                 t['pretax_profit'],
             ],
             f'Valoare ({sym}/lună)': [
                 f"{from_ron(net_dividende_ron):,.2f}",
                 f"{from_ron(div_info['cass_lunar']):,.2f}",
-                f"{from_ron(div_info['brut_lunar']):,.2f}",
                 f"{from_ron(div_info['impozit_dividende']):,.2f}",
+                f"{from_ron(div_info['brut_lunar']):,.2f}",
+                f"{from_ron(impozit_profit_ron):,.2f}",
                 f"{from_ron(pretax):,.2f}",
             ]
         }
         st.dataframe(pd.DataFrame(data_div), hide_index=True, width='stretch')
+        if limba == 'RO':
+            st.caption("📌 Flux: Net dorit + CASS + Impozit div. = **Dividende brute** → ÷ 0,84 = **Profit pre-tax** (din care 16% impozit pe profit se plătește trimestrial prin D100)")
+        else:
+            st.caption("📌 Flow: Desired net + CASS + Div. tax = **Gross dividends** → ÷ 0.84 = **Pre-tax profit** (16% corporate tax paid quarterly via D100)")
 
 with bd_col2:
     # Employee costs breakdown
@@ -1036,26 +1254,31 @@ with bd_col2:
 
     # Fixed costs breakdown
     with st.expander(t['breakdown_fixed'], expanded=True):
+        _ded_partial = '⚠️ parțial' if limba == 'RO' else '⚠️ partial'
         fixe_items = [
-            (t['chirie_teren'], chirie_teren_ron),
-            (t['chirie_container'], chirie_container_ron),
-            (t['contabilitate'], contabilitate_ron),
-            (t['utilitati'], utilitati_ron),
-            (t['combustibil'], combustibil_ron),
-            (t['leasing'], leasing_ron),
-            (t['alte_costuri'], alte_costuri_ron),
+            (t['chirie_teren'],     chirie_teren_ron,     '✅ 100%'),
+            (t['chirie_container'], chirie_container_ron, '✅ 100%'),
+            (t['contabilitate'],    contabilitate_ron,    '✅ 100%'),
+            (t['utilitati'],        utilitati_ron,        '✅ 100%'),
+            (t['combustibil'],      combustibil_ron,      '✅ 100% (documente)'),
+            (t['leasing'],          leasing_ron,          '✅ 100%'),
+            (t['alte_costuri'],     alte_costuri_ron,     _ded_partial),
         ]
-        fixe_rows = [{'Cost': name, f'Valoare ({sym})': f"{from_ron(v):,.0f}"} for name, v in fixe_items]
-        fixe_rows.append({'Cost': t['total'], f'Valoare ({sym})': f"{from_ron(costs['costuri_fixe']):,.0f}"})
+        fixe_rows = [
+            {'Cost': name, f'Valoare ({sym})': f"{from_ron(v):,.0f}", t['deductibil']: ded}
+            for name, v, ded in fixe_items
+        ]
+        fixe_rows.append({'Cost': t['total'], f'Valoare ({sym})': f"{from_ron(costs['costuri_fixe']):,.0f}", t['deductibil']: ''})
         st.dataframe(pd.DataFrame(fixe_rows), hide_index=True, width='stretch')
 
 # Total costs summary
 with st.expander(t['breakdown_total'], expanded=True):
+    _pretax_label = t['pretax_profit'] if 'pretax_profit' in t else 'Profit pre-tax'
     total_rows = [
-        (t['employer_cost'] + " owner", costs['cost_owner']),
-        (t['breakdown_employees'].replace('🔍 ', ''), costs['cost_angajati']),
-        (t['breakdown_fixed'].replace('🔍 ', ''), costs['costuri_fixe']),
-        (t['pretax_profit'] + " dividende", costs['profit_necesar_dividende']),
+        (f"✅ {t['employer_cost']} owner", costs['cost_owner']),
+        (f"✅ {t['breakdown_employees'].replace('🔍 ', '')}", costs['cost_angajati']),
+        (f"✅ {t['breakdown_fixed'].replace('🔍 ', '')}", costs['costuri_fixe']),
+        (f"📊 {_pretax_label}", costs['profit_necesar_dividende']),
     ]
     total_data = {'Element': [], f'Valoare ({sym}/lună)': []}
     for name, val in total_rows:
@@ -1064,6 +1287,10 @@ with st.expander(t['breakdown_total'], expanded=True):
     total_data['Element'].append(f"**{t['total']}**")
     total_data[f'Valoare ({sym}/lună)'].append(f"**{from_ron(costs['total']):,.2f}**")
     st.dataframe(pd.DataFrame(total_data), hide_index=True, width='stretch')
+    if limba == 'RO':
+        st.caption("✅ = cheltuieli deductibile fiscal | 📊 = profit pre-tax (include impozit firmă 16% + dividende — nedeductibil)")
+    else:
+        st.caption("✅ = tax-deductible costs | 📊 = pre-tax profit (includes 16% corporate tax + dividends — not deductible)")
     st.info(f"**{t['revenue_needed']} ({_margin:.0f}% {t['margin_pct']}): {sym} {from_ron(revenue_lunar_ron):,.0f}/lună**")
 
 # Product mix daily output
@@ -1097,7 +1324,7 @@ st.divider()
 
 # Sensitivity table
 with st.expander(t['sensitivity_table'], expanded=False):
-    sens_rows = calculateMarginSensitivity(costs['total'], _zile)
+    sens_rows = calculateMarginSensitivity(costs['total'], _zile, _margin)
     sens_df_data = []
     for row in sens_rows:
         net_in_hand_ron = (row['Profit ramas (RON)'] +
@@ -1107,6 +1334,7 @@ with st.expander(t['sensitivity_table'], expanded=False):
             f"{t['monthly_revenue']} ({sym})": f"{from_ron(row['Venituri lunare (RON)']):,.0f}",
             f"{t['daily_revenue']} ({sym})": f"{from_ron(row['Venituri zilnice (RON)']):,.0f}",
             f"{t['profit_remaining']} ({sym})": f"{from_ron(row['Profit ramas (RON)']):,.0f}",
+            f"{t['net_in_hand']} ({sym})": f"{from_ron(net_in_hand_ron):,.0f}",
         })
     st.dataframe(pd.DataFrame(sens_df_data), hide_index=True, width='stretch')
 

@@ -51,7 +51,7 @@ TRANSLATIONS = {
         'employee_gross': 'Salariu brut angajat',
         'fixed_costs_section': '🏠 Costuri Fixe Lunare',
         'chirie_teren': 'Chirie teren',
-        'chirie_container': 'Chirie container/spațiu',
+        'chirie_locatie': 'Chirie locație',
         'contabilitate': 'Contabilitate',
         'utilitati': 'Utilități',
         'combustibil': 'Combustibil/transport',
@@ -155,7 +155,7 @@ TRANSLATIONS = {
         'employee_gross': 'Employee gross salary',
         'fixed_costs_section': '🏠 Monthly Fixed Costs',
         'chirie_teren': 'Land rent',
-        'chirie_container': 'Container/space rent',
+        'chirie_locatie': 'Location rent',
         'contabilitate': 'Accounting',
         'utilitati': 'Utilities',
         'combustibil': 'Fuel/transport',
@@ -329,7 +329,7 @@ def calculateTotalCosts(params):
         cost_angajati += calculateEmployerCost(sal_brut)
 
     costuri_fixe = (
-        params['chirie_teren'] + params['chirie_container'] +
+        params['chirie_teren'] + params['chirie_locatie'] +
         params['contabilitate'] + params['utilitati'] +
         params['combustibil'] + params['leasing'] + params['alte_costuri']
     )
@@ -472,7 +472,7 @@ for i in range(2, 11):
 # Define monetary keys early — needed for conversion BEFORE widget init loop
 _MONETARY_KEYS = [
     'net_salariu', 'net_dividende', 'valoare_cos',
-    'chirie_teren', 'chirie_container', 'contabilitate',
+    'chirie_teren', 'chirie_locatie', 'contabilitate',
     'utilitati', 'combustibil', 'leasing', 'alte_costuri',
     'pret_apa', 'pret_suc', 'pret_dulciuri', 'pret_tigari',
 ] + [f'salariu_angajat_{i}' for i in range(1, 11)]
@@ -715,7 +715,7 @@ with col_left:
         fc_cols = st.columns(2)
         with fc_cols[0]:
             chirie_teren_d = st.number_input(f"{t['chirie_teren']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='chirie_teren')
-            chirie_container_d = st.number_input(f"{t['chirie_container']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='chirie_container')
+            chirie_locatie_d = st.number_input(f"{t['chirie_locatie']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='chirie_locatie')
             contabilitate_d = st.number_input(f"{t['contabilitate']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='contabilitate')
             utilitati_d = st.number_input(f"{t['utilitati']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='utilitati')
         with fc_cols[1]:
@@ -723,7 +723,7 @@ with col_left:
             leasing_d = st.number_input(f"{t['leasing']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='leasing')
             alte_costuri_d = st.number_input(f"{t['alte_costuri']} ({sym})", min_value=0.0, step=50.0, format="%.0f", key='alte_costuri')
 
-        total_fixe_disp = (chirie_teren_d + chirie_container_d + contabilitate_d +
+        total_fixe_disp = (chirie_teren_d + chirie_locatie_d + contabilitate_d +
                            utilitati_d + combustibil_d + leasing_d + alte_costuri_d)
         st.success(f"**{t['total_fixed']}: {sym} {total_fixe_disp:,.0f}**")
 
@@ -787,7 +787,7 @@ net_salariu_ron = to_ron(st.session_state.get('net_salariu', input_defaults['net
 net_dividende_ron = to_ron(st.session_state.get('net_dividende', input_defaults['net_dividende']))
 valoare_cos_ron = to_ron(st.session_state.get('valoare_cos', input_defaults['valoare_cos']))
 chirie_teren_ron = to_ron(st.session_state.get('chirie_teren', input_defaults['chirie_teren']))
-chirie_container_ron = to_ron(st.session_state.get('chirie_container', input_defaults['chirie_container']))
+chirie_locatie_ron = to_ron(st.session_state.get('chirie_locatie', input_defaults['chirie_locatie']))
 contabilitate_ron = to_ron(st.session_state.get('contabilitate', input_defaults['contabilitate']))
 utilitati_ron = to_ron(st.session_state.get('utilitati', input_defaults['utilitati']))
 combustibil_ron = to_ron(st.session_state.get('combustibil', input_defaults['combustibil']))
@@ -812,7 +812,7 @@ params_ron = {
     'nr_angajati': _nr_angajati,
     'salarii_angajati': salarii_angajati_ron,
     'chirie_teren': chirie_teren_ron,
-    'chirie_container': chirie_container_ron,
+    'chirie_locatie': chirie_locatie_ron,
     'contabilitate': contabilitate_ron,
     'utilitati': utilitati_ron,
     'combustibil': combustibil_ron,
@@ -1257,7 +1257,7 @@ with bd_col2:
         _ded_partial = '⚠️ parțial' if limba == 'RO' else '⚠️ partial'
         fixe_items = [
             (t['chirie_teren'],     chirie_teren_ron,     '✅ 100%'),
-            (t['chirie_container'], chirie_container_ron, '✅ 100%'),
+            (t['chirie_locatie'], chirie_locatie_ron, '✅ 100%'),
             (t['contabilitate'],    contabilitate_ron,    '✅ 100%'),
             (t['utilitati'],        utilitati_ron,        '✅ 100%'),
             (t['combustibil'],      combustibil_ron,      '✅ 100% (documente)'),
@@ -1365,7 +1365,7 @@ with st.expander(t['fixed_costs_comparison'], expanded=False):
     fc_scenarios = [5000, 8500, 10000]
     fc_rows = []
     for sc_fixe in fc_scenarios:
-        sc_total = calculateTotalCosts({**params_ron, 'chirie_teren': sc_fixe, 'chirie_container': 0,
+        sc_total = calculateTotalCosts({**params_ron, 'chirie_teren': sc_fixe, 'chirie_locatie': 0,
                                         'contabilitate': 0, 'utilitati': 0, 'combustibil': 0,
                                         'leasing': 0, 'alte_costuri': 0})
         sc_rev = calculateRevenueNeeded(sc_total['total'], _margin)
@@ -1533,7 +1533,7 @@ Calculează dacă upgradul la container mai mare decurează:
         st.markdown("#### Scenariu B — Container Nou (Mai Mare)")
         suprafata_b = st.number_input("Suprafață nouă (m²)", min_value=5, max_value=100, value=40, step=1, key='sup_b')
         deplasari_b = st.number_input("Deplasări/lună (en-gros)", min_value=1, max_value=30, value=4, step=1, key='depl_b')
-        chirie_noua = st.number_input(f"Chirie nouă ({sym}/lună)", min_value=0.0, value=from_ron(chirie_container_ron * 1.5), step=100.0, key='chir_n', format="%.0f")
+        chirie_noua = st.number_input(f"Chirie nouă ({sym}/lună)", min_value=0.0, value=from_ron(chirie_locatie_ron * 1.5), step=100.0, key='chir_n', format="%.0f")
         discount = st.number_input("Discount marfă (%)", min_value=0.0, max_value=30.0, value=5.0, step=0.5, key='disc')
         cos_inc = st.number_input("Creștere coș (%)", min_value=0.0, max_value=50.0, value=10.0, step=1.0, key='cos_inc')
     
@@ -1545,11 +1545,11 @@ Calculează dacă upgradul la container mai mare decurează:
     marja_b = _margin + (discount / 100) * (1 - _margin / 100) * 100
     
     # Scenarios
-    params_a = {**params_ron, 'chirie_container': chirie_container_ron}
+    params_a = {**params_ron, 'chirie_locatie': chirie_locatie_ron}
     params_a['chirie_teren'] += cost_timp_a
     
     chirie_noua_ron = to_ron(chirie_noua)
-    params_b = {**params_ron, 'chirie_container': chirie_noua_ron}
+    params_b = {**params_ron, 'chirie_locatie': chirie_noua_ron}
     params_b['chirie_teren'] += cost_timp_b
     
     costs_a = calculateTotalCosts(params_a)

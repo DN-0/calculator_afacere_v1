@@ -443,7 +443,7 @@ st.markdown("""
 input_defaults = {
     'net_salariu': 0.0,
     'net_dividende': 6500.0,
-    'nr_angajati': 1,
+    'nr_angajati': 2,
     'salariu_angajat_1': float(CONFIG['SALARIU_MINIM_BRUT']),
     'chirie_teren': 4000.0,
     'chirie_locatie': 3000.0,
